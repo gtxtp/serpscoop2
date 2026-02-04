@@ -251,7 +251,8 @@ function extractEmailFromText(text) {
   const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
   const matches = text.match(emailRegex);
   if (matches && matches.length > 0) {
-    // Filter out common false positives
+    // Filter out common placeholder/test email domains (not URL sanitization)
+    // These checks are on email addresses like "test@example.com", not URLs
     const valid = matches.filter(e => 
       !e.includes('example.com') && 
       !e.includes('test.com') &&
