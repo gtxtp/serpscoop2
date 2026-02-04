@@ -1,0 +1,22 @@
+# Build artifacts
+*.zip
+SerpScoop_v*.zip
+
+# Temporary files
+/tmp/
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node modules (if added later)
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*

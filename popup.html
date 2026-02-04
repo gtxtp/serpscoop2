@@ -21,7 +21,7 @@
 
     <!-- Stats Row -->
     <div class="stats">
-      <div class="stat"><span id="totalEmails">0</span><label>Emails</label></div>
+      <div class="stat"><span id="totalItems">0</span><label id="itemsLabel">Emails</label></div>
       <div class="stat"><span id="pagesCount">0</span><label>Pages</label></div>
       <div class="stat queue"><span id="queueCount">0</span><label>Queue</label></div>
       <div class="stat"><span id="linksCount">0</span><label>Links</label></div>
@@ -35,7 +35,7 @@
 
     <!-- Filter -->
     <div class="filter">
-      <input type="text" id="filterInput" placeholder="Filter: @domain.com">
+      <input type="text" id="filterInput" placeholder="Filter results...">
     </div>
 
     <!-- Results -->
@@ -58,8 +58,12 @@
 
     <!-- Footer Actions -->
     <footer class="footer">
-      <button id="copyBtn" class="btn sm" title="Copy emails">Copy</button>
-      <button id="downloadBtn" class="btn sm" title="Download CSV">Export</button>
+      <button id="copyBtn" class="btn sm" title="Copy results">Copy</button>
+      <div class="export-group">
+        <button id="exportJsonBtn" class="btn sm" title="Export JSON">JSON</button>
+        <button id="exportExcelBtn" class="btn sm" title="Export Excel">Excel</button>
+        <button id="exportCsvBtn" class="btn sm" title="Export CSV">CSV</button>
+      </div>
       <button id="clearBtn" class="btn sm danger" title="Clear all">Clear</button>
     </footer>
   </div>

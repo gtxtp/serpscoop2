@@ -7,19 +7,24 @@
 // STATE
 // ============================================================================
 let emails = [];
+let contracts = [];
 let filter = '';
+let mode = 'email'; // 'email' or 'contract'
 let stats = { totalFound: 0, pagesProcessed: 0, linksScraped: 0 };
+let contractStats = { totalFound: 0, pagesProcessed: 0 };
 let queueStatus = { pending: 0, processing: false, stats: { completed: 0, failed: 0 } };
+let contractQueueStatus = { pending: 0, processing: false, stats: { completed: 0, failed: 0 } };
 
 // ============================================================================
 // DOM REFS
 // ============================================================================
 const $ = (id) => document.getElementById(id);
 const el = {
-  runBtn: null, copyBtn: null, downloadBtn: null, clearBtn: null,
-  filterInput: null, totalEmails: null, pagesCount: null, queueCount: null,
-  linksCount: null, queueStatus: null, queueFill: null, queueText: null,
-  primarySection: null, primaryList: null, allList: null,
+  runBtn: null, copyBtn: null, exportJsonBtn: null, exportExcelBtn: null, 
+  exportCsvBtn: null, clearBtn: null,
+  filterInput: null, totalItems: null, itemsLabel: null, pagesCount: null, 
+  queueCount: null, linksCount: null, queueStatus: null, queueFill: null, 
+  queueText: null, primarySection: null, primaryList: null, allList: null,
   matchCount: null, allCount: null, toast: null
 };
 
@@ -31,10 +36,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   Object.keys(el).forEach(k => el[k] = $(k) || el[k]);
   el.runBtn = $('runBtn');
   el.copyBtn = $('copyBtn');
-  el.downloadBtn = $('downloadBtn');
+  el.exportJsonBtn = $('exportJsonBtn');
+  el.exportExcelBtn = $('exportExcelBtn');
+  el.exportCsvBtn = $('exportCsvBtn');
   el.clearBtn = $('clearBtn');
   el.filterInput = $('filterInput');
-  el.totalEmails = $('totalEmails');
+  el.totalItems = $('totalItems');
+  el.itemsLabel = $('itemsLabel');
   el.pagesCount = $('pagesCount');
   el.queueCount = $('queueCount');
   el.linksCount = $('linksCount');
@@ -51,15 +59,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Event listeners
   el.runBtn.addEventListener('click', handleRun);
   el.copyBtn.addEventListener('click', handleCopy);
-  el.downloadBtn.addEventListener('click', handleDownload);
+  el.exportJsonBtn.addEventListener('click', handleExportJson);
+  el.exportExcelBtn.addEventListener('click', handleExportExcel);
+  el.exportCsvBtn.addEventListener('click', handleExportCsv);
   el.clearBtn.addEventListener('click', handleClear);
   el.filterInput.addEventListener('input', handleFilter);
   
-  // Load saved filter
-  chrome.storage.local.get(['filter'], (r) => {
+  // Load saved filter and mode
+  chrome.storage.local.get(['filter', 'mode'], (r) => {
     if (r.filter) {
       el.filterInput.value = r.filter;
       filter = r.filter.toLowerCase();
+    }
+    if (r.mode) {
+      mode = r.mode;
     }
   });
 
@@ -75,17 +88,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Listen for updates
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.type === 'EMAILS_UPDATED' || msg.type === 'QUEUE_STATUS') {
+    if (msg.type === 'EMAILS_UPDATED' || msg.type === 'CONTRACTS_UPDATED' ||
+        msg.type === 'QUEUE_STATUS' || msg.type === 'CONTRACT_STATUS') {
       loadData();
       loadQueueStatus();
     }
   });
   
-  // Single email copy delegation
+  // Single item copy delegation
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('copy-btn')) {
-      const email = e.target.dataset.email;
-      navigator.clipboard.writeText(email).then(() => toast('Copied!'));
+      const text = e.target.dataset.text;
+      navigator.clipboard.writeText(text).then(() => toast('Copied!'));
     }
   });
 });
@@ -96,13 +110,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadData() {
   const data = await sendMessage({ type: 'GET_DATA' });
   emails = data.emails || [];
+  contracts = data.contracts || [];
   stats = data.stats || stats;
+  contractStats = data.contractStats || contractStats;
+  
+  // Auto-detect mode based on data
+  if (contracts.length > 0 && emails.length === 0) {
+    mode = 'contract';
+  } else if (emails.length > 0 && contracts.length === 0) {
+    mode = 'email';
+  }
+  
   render();
 }
 
 async function loadQueueStatus() {
-  const status = await sendMessage({ type: 'GET_QUEUE_STATUS' });
-  queueStatus = status || queueStatus;
+  const emailStatus = await sendMessage({ type: 'GET_QUEUE_STATUS' });
+  const contractStatus = await sendMessage({ type: 'GET_CONTRACT_STATUS' });
+  queueStatus = emailStatus || queueStatus;
+  contractQueueStatus = contractStatus || contractQueueStatus;
   renderQueue();
 }
 
@@ -118,20 +144,31 @@ function sendMessage(msg) {
 // RENDERING
 // ============================================================================
 function render() {
+  // Update label based on mode
+  if (mode === 'contract') {
+    el.itemsLabel.textContent = 'Contracts';
+    el.totalItems.textContent = contracts.length;
+  } else {
+    el.itemsLabel.textContent = 'Emails';
+    el.totalItems.textContent = emails.length;
+  }
+  
   // Stats
-  el.totalEmails.textContent = emails.length;
   el.pagesCount.textContent = stats.pagesProcessed || 0;
   el.linksCount.textContent = stats.linksScraped || 0;
 
-  // Split emails by filter
+  // Get current dataset
+  const dataset = mode === 'contract' ? contracts : emails;
+  
+  // Split by filter
   const matched = [];
   const others = [];
   
-  for (const e of emails) {
-    if (filter && e.email.toLowerCase().includes(filter)) {
-      matched.push(e);
+  for (const item of dataset) {
+    if (filter && matchesFilter(item, filter)) {
+      matched.push(item);
     } else {
-      others.push(e);
+      others.push(item);
     }
   }
 
@@ -140,30 +177,64 @@ function render() {
     el.primarySection.classList.remove('hidden');
     el.matchCount.textContent = matched.length;
     el.primaryList.innerHTML = matched.length 
-      ? matched.map(renderEmail).join('') 
+      ? matched.map(item => renderItem(item)).join('') 
       : '<div class="empty">No matches</div>';
   } else {
     el.primarySection.classList.add('hidden');
   }
 
   // All results (show unmatched when filter active, otherwise all)
-  const displayList = filter ? others : emails;
+  const displayList = filter ? others : dataset;
   el.allCount.textContent = displayList.length;
   el.allList.innerHTML = displayList.length 
-    ? displayList.map(renderEmail).join('') 
-    : '<div class="empty">No emails yet</div>';
+    ? displayList.map(item => renderItem(item)).join('') 
+    : `<div class="empty">No ${mode === 'contract' ? 'contracts' : 'emails'} yet</div>`;
+}
+
+function matchesFilter(item, filterText) {
+  if (mode === 'contract') {
+    // Search across all contract fields
+    const searchable = [
+      item.poNumber, item.description, item.purchaserName,
+      item.vendorName, item.vendorContactName, item.vendorEmail,
+      item.vendorPhone, item.vendorAddress, item.contractValue
+    ].join(' ').toLowerCase();
+    return searchable.includes(filterText);
+  } else {
+    // Search email
+    return item.email.toLowerCase().includes(filterText);
+  }
+}
+
+function renderItem(item) {
+  if (mode === 'contract') {
+    return renderContract(item);
+  } else {
+    return renderEmail(item);
+  }
 }
 
 function renderEmail(e) {
   const method = e.method === 'background' ? '◐' : '●';
   return `<div class="email-row">
     <span class="email-text" title="${e.source}">${method} ${e.email}</span>
-    <button class="copy-btn" data-email="${e.email}">⧉</button>
+    <button class="copy-btn" data-text="${e.email}">⧉</button>
+  </div>`;
+}
+
+function renderContract(c) {
+  const preview = `${c.vendorName || 'N/A'} - ${c.vendorEmail || 'N/A'}`;
+  return `<div class="email-row">
+    <span class="email-text" title="${c.poNumber}">${c.poNumber || 'Unknown'}: ${preview}</span>
+    <button class="copy-btn" data-text="${c.vendorEmail || c.poNumber}">⧉</button>
   </div>`;
 }
 
 function renderQueue() {
-  const { pending, processing, stats: qs } = queueStatus;
+  // Show whichever queue is active
+  const activeQueue = mode === 'contract' ? contractQueueStatus : queueStatus;
+  const { pending, processing, stats: qs } = activeQueue;
+  
   el.queueCount.textContent = pending;
   
   if (pending > 0 || processing) {
@@ -171,7 +242,9 @@ function renderQueue() {
     const total = pending + qs.completed + qs.failed;
     const pct = total > 0 ? Math.round(((qs.completed + qs.failed) / total) * 100) : 0;
     el.queueFill.style.width = `${pct}%`;
-    el.queueText.textContent = `${qs.completed}/${total} processed`;
+    el.queueText.textContent = mode === 'contract' 
+      ? `Processing contract ${qs.completed} of ${total}`
+      : `${qs.completed}/${total} processed`;
   } else {
     el.queueStatus.classList.add('hidden');
   }
@@ -188,17 +261,48 @@ async function handleRun() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) { toast('No active tab'); return; }
     
-    const result = await chrome.tabs.sendMessage(tab.id, { type: 'START_EXTRACTION' });
+    // Check if it's a BuySpeed page first
+    let pageType = { type: 'unknown', canRun: false };
+    try {
+      pageType = await chrome.tabs.sendMessage(tab.id, { type: 'CHECK_PAGE_TYPE' });
+    } catch (e) {
+      // Not a BuySpeed page, continue
+    }
     
-    if (result?.success) {
-      toast(`Found ${result.serpEmails} emails, queued ${result.linksQueued} links`);
-      await loadData();
-      await loadQueueStatus();
+    if (pageType && pageType.canRun && pageType.type.includes('buyspeed')) {
+      // Run BuySpeed extraction
+      mode = 'contract';
+      chrome.storage.local.set({ mode: 'contract' });
+      const result = await chrome.tabs.sendMessage(tab.id, { type: 'START_EXTRACTION' });
+      
+      if (result?.success) {
+        if (result.type === 'listing') {
+          toast(`Found ${result.linksFound} contracts${result.hasNext ? ', advanced to next page' : ''}`);
+        } else if (result.type === 'detail') {
+          toast('Extracted contract details');
+        }
+        await loadData();
+        await loadQueueStatus();
+      } else {
+        toast(result?.message || 'Error');
+      }
     } else {
-      toast(result?.message || 'Error');
+      // Try Google SERP extraction
+      mode = 'email';
+      chrome.storage.local.set({ mode: 'email' });
+      const result = await chrome.tabs.sendMessage(tab.id, { type: 'START_EXTRACTION' });
+      
+      if (result?.success) {
+        toast(`Found ${result.serpEmails} emails, queued ${result.linksQueued} links`);
+        await loadData();
+        await loadQueueStatus();
+      } else {
+        toast('Run on Google search or BuySpeed portal');
+      }
     }
   } catch (e) {
-    toast('Run on a Google search page');
+    console.error('Run error:', e);
+    toast('Run on Google search or BuySpeed portal');
   } finally {
     el.runBtn.disabled = false;
     el.runBtn.textContent = '▶ Run';
@@ -212,42 +316,109 @@ function handleFilter(e) {
 }
 
 async function handleCopy() {
+  const dataset = mode === 'contract' ? contracts : emails;
   const list = filter 
-    ? emails.filter(e => e.email.toLowerCase().includes(filter))
-    : emails;
+    ? dataset.filter(item => matchesFilter(item, filter))
+    : dataset;
   
-  if (!list.length) { toast('No emails'); return; }
+  if (!list.length) { 
+    toast(`No ${mode === 'contract' ? 'contracts' : 'emails'}`); 
+    return; 
+  }
   
-  await navigator.clipboard.writeText(list.map(e => e.email).join('\n'));
-  toast(`Copied ${list.length} emails`);
+  let copyText;
+  if (mode === 'contract') {
+    copyText = list.map(c => c.vendorEmail || c.poNumber).join('\n');
+  } else {
+    copyText = list.map(e => e.email).join('\n');
+  }
+  
+  await navigator.clipboard.writeText(copyText);
+  toast(`Copied ${list.length} ${mode === 'contract' ? 'items' : 'emails'}`);
 }
 
-function handleDownload() {
+function handleExportJson() {
+  const dataset = mode === 'contract' ? contracts : emails;
   const list = filter 
-    ? emails.filter(e => e.email.toLowerCase().includes(filter))
-    : emails;
+    ? dataset.filter(item => matchesFilter(item, filter))
+    : dataset;
   
-  if (!list.length) { toast('No emails'); return; }
+  if (!list.length) { 
+    toast(`No ${mode === 'contract' ? 'contracts' : 'emails'}`); 
+    return; 
+  }
   
-  const csv = 'Email,Domain,Source,Method\n' + 
-    list.map(e => `"${e.email}","${e.domain}","${e.source}","${e.method || 'direct'}"`).join('\n');
+  const exportData = {
+    exportDate: new Date().toISOString(),
+    type: mode,
+    totalItems: list.length,
+    items: list
+  };
+  
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `serpscoop-${mode}-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${list.length} items to JSON`);
+}
+
+function handleExportExcel() {
+  toast('Excel export requires xlsx library. See README for installation instructions or use JSON/CSV export.');
+  // Note: Full Excel export would require the xlsx.mini.min.js library
+  // which couldn't be downloaded due to network restrictions.
+  // User can manually add the library to enable this feature.
+}
+
+function handleExportCsv() {
+  const dataset = mode === 'contract' ? contracts : emails;
+  const list = filter 
+    ? dataset.filter(item => matchesFilter(item, filter))
+    : dataset;
+  
+  if (!list.length) { 
+    toast(`No ${mode === 'contract' ? 'contracts' : 'emails'}`); 
+    return; 
+  }
+  
+  let csv;
+  if (mode === 'contract') {
+    csv = 'PO Number,Description,Purchaser Name,Vendor Name,Vendor Contact,Vendor Email,Vendor Phone,Vendor Address,Contract Value\n' + 
+      list.map(c => {
+        const escape = (s) => `"${(s || '').replace(/"/g, '""')}"`;
+        return [
+          escape(c.poNumber), escape(c.description), escape(c.purchaserName),
+          escape(c.vendorName), escape(c.vendorContactName), escape(c.vendorEmail),
+          escape(c.vendorPhone), escape(c.vendorAddress), escape(c.contractValue)
+        ].join(',');
+      }).join('\n');
+  } else {
+    csv = 'Email,Domain,Source,Method\n' + 
+      list.map(e => `"${e.email}","${e.domain}","${e.source}","${e.method || 'direct'}"`).join('\n');
+  }
   
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `serpscoop_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `serpscoop-${mode}-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  toast(`Exported ${list.length} emails`);
+  toast(`Exported ${list.length} ${mode === 'contract' ? 'contracts' : 'emails'}`);
 }
 
 async function handleClear() {
   if (!confirm('Clear all data?')) return;
   await sendMessage({ type: 'CLEAR_DATA' });
   emails = [];
+  contracts = [];
   stats = { totalFound: 0, pagesProcessed: 0, linksScraped: 0 };
+  contractStats = { totalFound: 0, pagesProcessed: 0 };
   queueStatus = { pending: 0, processing: false, stats: { completed: 0, failed: 0 } };
+  contractQueueStatus = { pending: 0, processing: false, stats: { completed: 0, failed: 0 } };
   render();
   renderQueue();
   toast('Cleared');
@@ -256,9 +427,18 @@ async function handleClear() {
 async function checkTab() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.url?.includes('google.com/search')) {
+    if (!tab?.url) return;
+    
+    // Check if it's a valid page for running extraction
+    const isGoogle = tab.url.includes('google.com/search');
+    const isBuySpeed = tab.url.includes('/bso/') || tab.url.includes('poSummary');
+    
+    if (!isGoogle && !isBuySpeed) {
       el.runBtn.disabled = true;
-      el.runBtn.title = 'Navigate to Google search first';
+      el.runBtn.title = 'Navigate to Google search or BuySpeed portal';
+    } else {
+      el.runBtn.disabled = false;
+      el.runBtn.title = 'Run extraction';
     }
   } catch {}
 }
