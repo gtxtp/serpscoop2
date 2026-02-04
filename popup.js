@@ -360,14 +360,14 @@ function handleExportJson() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `serpscoop_${mode}_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `serpscoop-${mode}-${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
   toast(`Exported ${list.length} items to JSON`);
 }
 
 function handleExportExcel() {
-  toast('Excel export requires xlsx library - use JSON or CSV export');
+  toast('Excel export requires xlsx library. See README for installation instructions or use JSON/CSV export.');
   // Note: Full Excel export would require the xlsx.mini.min.js library
   // which couldn't be downloaded due to network restrictions.
   // User can manually add the library to enable this feature.
@@ -404,7 +404,7 @@ function handleExportCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `serpscoop_${mode}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `serpscoop-${mode}-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   toast(`Exported ${list.length} ${mode === 'contract' ? 'contracts' : 'emails'}`);

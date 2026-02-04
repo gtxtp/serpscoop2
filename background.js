@@ -49,8 +49,8 @@ const getJitter = () => Math.floor(Math.random() * (CONFIG.MAX_DELAY - CONFIG.MI
 function gaussianRandom(min, max) {
   // Box-Muller transform for gaussian distribution
   let u = 0, v = 0;
-  while(u === 0) u = Math.random();
-  while(v === 0) v = Math.random();
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
   let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
   num = num / 10.0 + 0.5; // Translate to 0-1
   if (num > 1 || num < 0) return gaussianRandom(min, max);
@@ -120,7 +120,7 @@ async function stealthFetch(url, attempt = 0) {
     const res = await fetch(url, {
       method: 'GET',
       signal: controller.signal,
-      credentials: 'include', // CRITICAL: maintain session
+      credentials: 'include', // CRITICAL: Maintains session/authentication state for logged-in portals
       headers: {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
@@ -465,6 +465,8 @@ function extractPhoneFromText(text) {
 }
 
 function extractAddressFromText(text) {
+  // Matches US address format: street number + name + type (St/Ave/Rd/Floor/Suite), city, state (2 letters), ZIP (5 or 5-4 digits)
+  // Example: "515 S Flower St. 17th Floor, Los Angeles, CA 90071" or "123 Main Street, Suite 100, Boston, MA 02101-1234"
   const addressMatch = text.match(/(\d+\s+[A-Za-z0-9\s,\.]+(?:Street|St|Avenue|Ave|Road|Rd|Floor|Suite|Ste)[^,]*,\s*[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
   return addressMatch ? addressMatch[1].trim() : '';
 }

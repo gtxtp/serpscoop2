@@ -238,6 +238,8 @@ function extractVendorInfo(contract) {
   
   // If address is multi-line, try to get full address
   if (!contract.vendorAddress) {
+    // Matches US address format: street number + name + type (St/Ave/Rd/Floor/Suite), city, state (2 letters), ZIP (5 or 5-4 digits)
+    // Example: "515 S Flower St. 17th Floor, Los Angeles, CA 90071" or "123 Main Street, Suite 100, Boston, MA 02101-1234"
     const addressMatch = text.match(/(\d+\s+[A-Za-z0-9\s,\.]+(?:Street|St|Avenue|Ave|Road|Rd|Floor|Suite)[^,]*,\s*[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
     if (addressMatch) {
       contract.vendorAddress = addressMatch[1].trim();
