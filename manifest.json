@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SerpScoop",
   "version": "1.0.0",
-  "description": "Extract emails from Google Search Results and their landing pages",
+  "description": "Extract emails from Google SERPs and contract data from BuySpeed procurement portals",
   "permissions": [
     "activeTab",
     "scripting",
