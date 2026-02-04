@@ -31,6 +31,18 @@
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*/*"],
+      "js": ["content-buyspeed.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["xlsx.mini.min.js"],
+      "matches": ["<all_urls>"]
     }
   ],
   "action": {
@@ -40,7 +52,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "SerpScoop - Email Extractor"
+    "default_title": "SerpScoop - Email & Contract Extractor"
   },
   "icons": {
     "16": "icons/icon16.png",
